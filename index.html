@@ -18,13 +18,13 @@
 <body>
 
     <h1 id="game-title">⚔️ 邏輯聖殿：九重試煉（第 1 關） ⚔️</h1>
-    <p>💡 提示：按方向鍵移動。此版本地圖由 DFS 演算法即時生成，保證 100% 絕對有解、絕無死路！</p>
+    <p>💡 提示：部分關卡含有【雙重拉桿】封印，必須全部解開才能前往終點！魔王在第 9 關等著你。</p>
 
     <div id="game-container">
         <canvas id="gameCanvas" width="640" height="416"></canvas>
         
         <div id="dialog-box">
-            <div id="log-msg">【系統】尋找拉桿解開邏輯封印，前往迷宮終點吧！</div>
+            <div id="log-msg">【系統】尋找金色拉桿解開邏輯封印，前往迷宮終點吧！</div>
             <div class="stats" id="status-bar">勇者 HP: 100/100 | 基礎傷害: 20 | 裝備: 生鏽鐵劍</div>
         </div>
 
@@ -35,9 +35,9 @@
         </div>
 
         <div id="battle-window">
-            <h3 id="battle-title" style="color:#ff6464; margin-top:0;">💥 魔王遭遇戰</h3>
+            <h3 id="battle-title" style="color:#ff6464; margin-top:0;">💥 魔王終極決戰</h3>
             <p id="battle-hp">魔王 HP: 100 | 你的 HP: 100</p>
-            <button style="text-align:center;" onclick="playerAttack()">⚔️ 發動猛烈斬擊</button>
+            <button style="text-align:center;" onclick="playerAttack()">⚔️ 發動【真理絕技】斬擊</button>
         </div>
     </div>
 
@@ -46,98 +46,106 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const GRID_SIZE = 32;
 
-// 迷宮規格：高 13 格，寬 20 格
 const MAP_ROWS = 13;
 const MAP_COLS = 20;
 
 let currentLevel = 1;
 let pX = 1, pY = 1;
 let pHP = 100, pMaxHP = 100, pAtk = 20;
-let eHP = 100; 
+let eHP = 500; 
 let gameState = "MAP"; 
-let levelCleared = false; 
+
+// 追蹤當前關卡拉桿解鎖狀況
+let totalLeversInLevel = 1;
+let clearedLeversCount = 0;
+let activeLeverType = null; // 用來標記踩到的是 A 還是 B
+
 let GAME_MAP = [];
 
-// 🎯 隨機 DFS 迷宮生成演算法：確保地圖全連通，物理上絕對不會有死路
+// 🛠️ 進階安全地圖生成：保證多拉桿、終點主幹道絕對暢通
 function generatePerfectMaze() {
-    // 1. 初始化全為牆壁 (1)
     let maze = [];
     for (let r = 0; r < MAP_ROWS; r++) {
         maze.push(new Array(MAP_COLS).fill(1));
     }
 
-    // 2. DFS 挖路打通（以奇數格子作為節點）
     let visited = [];
     for (let r = 0; r < MAP_ROWS; r++) visited.push(new Array(MAP_COLS).fill(false));
 
     function walk(cx, cy) {
         visited[cy][cx] = true;
-        maze[cy][cx] = 0; // 挖開成空地
-
-        // 定義四個方向，每次移動 2 格
-        let dirs = [
-            [0, -2], [0, 2], [-2, 0], [2, 0]
-        ];
-        // 隨機打亂方向打通迷宮
+        maze[cy][cx] = 0;
+        let dirs = [[0, -2], [0, 2], [-2, 0], [2, 0]];
         dirs.sort(() => Math.random() - 0.5);
 
         for (let i = 0; i < dirs.length; i++) {
             let nx = cx + dirs[i][0];
             let ny = cy + dirs[i][1];
-
             if (nx > 0 && nx < MAP_COLS - 1 && ny > 0 && ny < MAP_ROWS - 1) {
                 if (!visited[ny][nx]) {
-                    // 挖開這兩格之間的牆壁
                     maze[cy + dirs[i][1] / 2][cx + dirs[i][0] / 2] = 0;
                     walk(nx, ny);
                 }
             }
         }
     }
-
-    // 從 (1,1) 開始挖迷宮
     walk(1, 1);
 
-    // 3. 確保起點周圍暢通
-    maze[1][1] = 0; 
+    // 強制打通安全十字主幹道與邊緣環路，徹底杜絕多物件死路
+    for(let c=1; c<MAP_COLS-1; c++) { maze[3][c] = 0; maze[9][c] = 0; }
+    for(let r=1; r<MAP_ROWS-1; r++) { maze[r][5] = 0; maze[r][14] = 0; }
+
+    maze[1][1] = 0; // 起點
     pX = 1; pY = 1;
 
-    // 4. 尋找地圖後半段的合適位置放置「拉桿 (2)」與「終點 (3)」
-    // 為確保絕對有路，我們只在已經被演算法挖開的空地 (0) 上放物件
-    let candidates = [];
-    for (let r = 1; r < MAP_ROWS - 1; r++) {
-        for (let c = 1; c < MAP_COLS - 1; c++) {
-            if (maze[r][c] === 0 && (r !== 1 || c !== 1)) {
-                candidates.push({x: c, y: r});
-            }
-        }
+    // 依據關卡設定拉桿數量
+    if ([4, 7, 8].includes(currentLevel)) {
+        totalLeversInLevel = 2;
+        maze[3][5] = 2;   // 拉桿 A (地圖左上象限交點)
+        maze[9][14] = 4;  // 拉桿 B (地圖右下象限交點，代號4表示第二個拉桿)
+    } else {
+        totalLeversInLevel = 1;
+        maze[6][5] = 2;   // 一般單拉桿
     }
+    clearedLeversCount = 0;
 
-    // 依據與起點的距離排序，把拉桿放中後半段，終點放最遠處
-    candidates.sort((a, b) => (b.x + b.y) - (a.x + a.y));
-
-    let endPos = candidates[0];                   // 最遠的做終點
-    let leverPos = candidates[Math.floor(candidates.length / 2)]; // 中間的做拉桿
-
-    maze[leverPos.y][leverPos.x] = 2;
-    maze[endPos.y][endPos.x] = 3;
+    maze[11][18] = 3; // 終點位置固定在右下角安全區
 
     return maze;
 }
 
+// 謎題庫（其中 4, 7, 8 關拆分為 A 與 B 兩個拉桿謎題）
 const RIDDLES = {
-    1: { title: "🧩 第一關：三衛兵說謊謎題", text: "門口有三個衛兵。A說：『B在說謊』；B說：『C在說謊』；C說：『A和B都在說謊』。請問誰說的是真話？", options: ["A 說真話", "B 說真話", "C 說真話", "大家都在說謊"], correct: 1, success: "【成功】封印解除，獲得「鋼鐵長劍」(攻擊力+15)。" },
-    2: { title: "🧩 第二關：天使與惡魔", text: "路口有兩個人，一個永遠說真話（天使），一個永遠說謊（惡魔）。你想知道哪條是正確的路。你只能問其中一人一個問題，以下哪句話能幫你找到正確的路？", options: ["「你是天使嗎？」", "「如果我問另一個人，他會說哪條是正確的路？」", "「正確的路在哪裡？」"], correct: 1, success: "【成功】最大生命值提升 30，通道開啟。" },
-    3: { title: "🧩 第三關：誰偷了寶石？", text: "寶石被偷了，嫌犯有甲、乙、丙三人。甲說：『是乙偷的』；乙說：『不是我偷的』；丙說：『反正不是我偷的』。已知這三人中只有一個人說真話，是誰偷的？", options: ["甲偷的", "乙偷的", "丙偷的"], correct: 2, success: "【成功】獲得「精靈魔刃」(攻擊力+20)，前方魔王現身！", boss: { name: "🧌 迷宮看守者 (初級魔王)", hp: 120, atk: 18 } },
-    4: { title: "🧩 第四關：四兄弟的實話", text: "四兄弟中有一人打破玻璃。老大說：『是老二破的』；老二說：『是老慢破的』；老三說：『反正不是我』；老四說：『老二在撒謊』。只有一人說真話，是誰打破的？", options: ["老大", "老二", "老三", "老四"], correct: 2, success: "【成功】完美擊破謊言！勇者生命值全面補滿。" },
-    5: { title: "🧩 第五關：誠實族與謊言族", text: "旅行者來到一個島，島上有誠實族與謊言族。他遇到一個人A，問他：『你是誠實族的嗎？』A嘟囔了一句聽不清。旁邊的B說：『A說他是，但我才是誠實族的。』請問B是什麼族？", options: ["誠實族", "謊言族", "無法確定"], correct: 1, success: "【成功】看穿島民的詭計！獲得「防禦聖徽」。" },
-    6: { title: "🧩 第六關：三色盒子的秘密", text: "金、銀、鐵三個盒子。金盒寫：『寶石不在此盒』；銀盒寫：『寶石在金盒』；鐵盒寫：『寶石不在銀盒』。三個標籤只有一個是真話。寶石在哪裡？", options: ["金盒子", "銀盒子", "鐵盒子"], correct: 0, success: "【成功】獲得「龍騎士巨劍」(攻擊力+30)！", boss: { name: "👹 鍊獄巨魔 (中級魔王)", hp: 200, atk: 25 } },
-    7: { title: "🧩 第七關：誰及格了？", text: "張、王、李三人查成績。張說：『我及格了』；王說：『李及格了』；李說：『王說的是真話』。已知這三人中有一人不及格，且只有不及格的人說了假話，誰不及格？", options: ["張不及格", "王不及格", "李不及格"], correct: 1, success: "【成功】推導正確！最大生命值增幅 50 點。" },
-    8: { title: "🧩 第八關：三個嫌疑犯", text: "警察審問A、B、C三人。A說：『B在說謊』；B說：『C在說謊』；C說：『我們三人都在說謊』。請問這三人中究竟有幾個說謊者？", options: ["1 個", "2 個", "3 個"], correct: 1, success: "【成功】全屬性大幅提升，準備迎接最終一戰！" },
-    9: { title: "🧩 第九關：真理之門的考驗", text: "守門人給了你一個機會。他說：『如果你接下來說的句子是真話，我會用火燒死你；如果你說的是假話，我會用冰凍死你。』為了活命，你應該對守門人說哪句話？", options: ["「你會用火燒死我」", "「你會用冰凍死我」", "「我正在說謊」"], correct: 1, success: "【終極成功】神之邏輯！獲得「真理聖劍」！", boss: { name: "🐉 終焉混沌神龍 (最終魔王)", hp: 350, atk: 35 } }
+    1: { title: "🧩 第一關：三衛兵說謊謎題", text: "門口有三個衛兵。A說：『B在說謊』；B說：『C在說謊』；C說：『A和B都在說謊』。請問誰說的是真話？", options: ["A 說真話", "B 說真話", "C 說真話", "大家都在說謊"], correct: 1, success: "【成功】解開第一重解封！獲得「鋼鐵長劍」(攻擊力+15)。", reward: () => { pAtk += 15; } },
+    2: { title: "🧩 第二關：天使與惡魔", text: "路口有兩個人，一個永遠說真話（天使），一個永遠說謊（惡魔）。你只能問其中一人一個問題，以下哪句話能幫你找到正確的路？", options: ["「你是天使嗎？」", "「如果我問另一個人，他會說哪條是正確的路？」", "「正確的路在哪裡？」"], correct: 1, success: "【成功】最大生命值提升 30 點。", reward: () => { pMaxHP += 30; pHP += 30; } },
+    3: { title: "🧩 第三關：誰偷了寶石？", text: "寶石被偷了，嫌犯有甲、乙、丙三人。甲說：『是乙偷的』；乙說：『不是我偷的』；丙說：『反正不是我偷的』。已知只有一個人說真話，是誰偷的？", options: ["甲偷的", "乙偷的", "丙偷的"], correct: 2, success: "【成功】獲得「精靈魔刃」(攻擊力+20)。", reward: () => { pAtk += 20; } },
+    
+    // 第 4 關雙拉桿
+    4: {
+        A: { title: "🧩 第四關-拉桿A：四兄弟的玻璃", text: "四兄弟中有一人打破玻璃。老大說：『是老二破的』；老二說：『是老四破的』；老三說：『反正不是我』；老四說：『老二在撒謊』。只有一人說真話，誰破的？", options: ["老大", "老二", "老三", "老四"], correct: 2, success: "【機關解除】老三的嫌疑洗清了！勇者最大生命值加 15 點。", reward: () => { pMaxHP += 15; pHP += 15; } },
+        B: { title: "🧩 第四關-拉桿B：犯人的腳印", text: "現場留下了腳印。甲說：『是丙留下的』；乙說：『是甲留下的』；丙說：『乙在說謊』。如果只有一個說真話，是誰留下的？", options: ["甲", "乙", "丙"], correct: 0, success: "【機關解除】看穿了腳印主人！勇者最大生命值加 15 點。", reward: () => { pMaxHP += 15; pHP += 15; } }
+    },
+    
+    5: { title: "🧩 第五關：誠實族與謊言族", text: "島上有誠實族與謊言族。遇到人A，問他：『你是誠實族的嗎？』A嘟囔了一句聽不清。旁邊的B說：『A說他是，但我才是誠實族的。』請問B是什麼族？", options: ["誠實族", "謊言族", "無法確定"], correct: 1, success: "【成功】看穿島民的詭計！獲得「防禦聖徽」(攻擊力+10)。", reward: () => { pAtk += 10; } },
+    6: { title: "🧩 第六關：三色盒子的秘密", text: "金盒寫：『寶石不在此盒』；銀盒寫：『寶石在金盒』；鐵盒寫：『寶石不在銀盒』。三個標籤只有一個是真話。寶石在哪裡？", options: ["金盒子", "銀盒子", "鐵盒子"], correct: 0, success: "【成功】獲得「龍騎士巨劍」(攻擊力+30)！", reward: () => { pAtk += 30; } },
+    
+    // 第 7 關雙拉桿
+    7: {
+        A: { title: "🧩 第七關-拉桿A：誰不及格？", text: "張、王、李三人查成績。張說：『我及格了』；王說：『李及格了』；李說：『王說的是真話』。已知一人不及格且只有他不說真話，誰不及格？", options: ["張不及格", "王不及格", "李不及格"], correct: 1, success: "【機關解除】算出成績了！最大生命值提升 25 點。", reward: () => { pMaxHP += 25; pHP += 25; } },
+        B: { title: "🧩 第七關-拉桿B：名次推測", text: "比賽完後，A說：『B是第一名』；B說：『C是第二名』。結果發現這兩句話中，有一半是錯的（即一個人猜對一個人猜錯）。誰是第一名？", options: ["A", "B", "C"], correct: 1, success: "【機關解除】洞悉了名次排序！最大生命值提升 25 點。", reward: () => { pMaxHP += 25; pHP += 25; } }
+    },
+    
+    // 第 8 關雙拉桿
+    8: {
+        A: { title: "🧩 第八關-拉桿A：說謊者計數", text: "A說：『B在說謊』；B說：『C在說謊』；C說：『我們三人都在說謊』。請問這三人中究竟有幾個說謊者？", options: ["1 個", "2 個", "3 個"], correct: 1, success: "【機關解除】看破時空悖論！生命值完全補滿！", reward: () => { pHP = pMaxHP; } },
+        B: { title: "🧩 第八關-拉桿B：撲克牌猜色", text: "桌上有兩張牌，一紅一黑。甲說：『這兩張至少有一張是紅的』；乙說：『如果這張是紅的，那另一張就是黑的』。兩人皆說實話，請問第一張是什麼顏色？", options: ["紅色", "黑色", "無法確定"], correct: 0, success: "【機關解除】看穿撲克牌色！基礎攻擊力提升 15 點。", reward: () => { pAtk += 15; } }
+    },
+    
+    9: { title: "🧩 第九關：真理之門的考驗", text: "守門人說：『如果你接下來說的句子是真話，我會用火燒死你；如果你說的是假話，我會用冰凍死你。』為了活命，你應該對守門人說哪句話？", options: ["「你會用火燒死我」", "「你會用冰凍死我」", "「我正在說謊」"], correct: 1, success: "【終極成功】神之邏輯！獲得「真理聖劍」(攻擊力+40)！前方終極魔王現身！", reward: () => { pAtk += 40; } }
 };
 
-// 初始化第一關地圖
+const BOSS_DATA = { name: "🐉 終焉混沌神龍 (最終大魔王)", hp: 500, atk: 35 };
+
 GAME_MAP = generatePerfectMaze();
 
 const imgs = { player: new Image(), wall: new Image(), lever: new Image(), monster: new Image() };
@@ -166,12 +174,12 @@ function drawGame() {
             let posY = r * GRID_SIZE;
             
             if(tile === 1) drawTile(posX, posY, '#444', imgs.wall, imgLoaded.wall);
-            else if(tile === 2) drawTile(posX, posY, '#ffd700', imgs.lever, imgLoaded.lever);
+            else if(tile === 2 || tile === 4) drawTile(posX, posY, '#ffd700', imgs.lever, imgLoaded.lever); // 2跟4都是拉桿外觀
             else if(tile === 3) {
-                if([3, 6, 9].includes(currentLevel)) {
+                if(currentLevel === 9) {
                     drawTile(posX, posY, '#f00', imgs.monster, imgLoaded.monster);
                 } else {
-                    ctx.fillStyle = levelCleared ? "#00ffcc" : "#ff3333";
+                    ctx.fillStyle = (clearedLeversCount === totalLeversInLevel) ? "#00ffcc" : "#ff3333";
                     ctx.fillRect(posX, posY, GRID_SIZE-1, GRID_SIZE-1);
                 }
             }
@@ -192,14 +200,16 @@ window.addEventListener("keydown", function(e) {
         pX = nextX; pY = nextY;
         let currentTile = GAME_MAP[pY][pX];
         
-        if(currentTile === 2) {
+        if(currentTile === 2 || currentTile === 4) {
             gameState = "PUZ";
+            activeLeverType = (currentTile === 2) ? "A" : "B";
             openPuzzle();
         } else if(currentTile === 3) {
-            if(!levelCleared) {
-                document.getElementById("log-msg").innerText = "🔒 終點封印中！你必須先解開本關拉桿的邏輯謎題！";
+            if(clearedLeversCount < totalLeversInLevel) {
+                let remain = totalLeversInLevel - clearedLeversCount;
+                document.getElementById("log-msg").innerText = `🔒 終點封印中！本關為多重鎖，你還需要解開 ${remain} 個拉桿謎題！`;
             } else {
-                if([3, 6, 9].includes(currentLevel)) {
+                if(currentLevel === 9) {
                     gameState = "BATTLE";
                     setupBossBattle();
                 } else {
@@ -212,8 +222,14 @@ window.addEventListener("keydown", function(e) {
 });
 
 function openPuzzle() {
-    const data = RIDDLES[currentLevel];
-    document.getElementById("puz-title").innerText = `🧩 第 ${currentLevel} 關：` + data.title.split("：")[1];
+    let data;
+    if (totalLeversInLevel === 2) {
+        data = RIDDLES[currentLevel][activeLeverType];
+    } else {
+        data = RIDDLES[currentLevel];
+    }
+    
+    document.getElementById("puz-title").innerText = data.title;
     document.getElementById("puz-text").innerText = data.text;
     
     const btnContainer = document.getElementById("puz-buttons");
@@ -230,15 +246,26 @@ function openPuzzle() {
 
 function checkAnswer(selectedIndex) {
     document.getElementById("puz-window").style.display = "none";
-    const data = RIDDLES[currentLevel];
+    let data;
+    if (totalLeversInLevel === 2) {
+        data = RIDDLES[currentLevel][activeLeverType];
+    } else {
+        data = RIDDLES[currentLevel];
+    }
     
     if(selectedIndex === data.correct) {
-        levelCleared = true;
-        document.getElementById("log-msg").innerText = data.success + " 終點通道已開放！";
-        GAME_MAP[pY][pX] = 0; 
+        clearedLeversCount++;
+        data.reward(); // 發放各別拉桿的獎勵屬性
+        
+        if (clearedLeversCount === totalLeversInLevel) {
+            document.getElementById("log-msg").innerText = data.success + " 🎉 本關所有封印解除！終點通道已開放！";
+        } else {
+            document.getElementById("log-msg").innerText = data.success + " 💡 還剩餘一個拉桿封印未解除！";
+        }
+        GAME_MAP[pY][pX] = 0; // 踩過解開後，拉桿消失變成空地
     } else {
         pHP -= 20;
-        document.getElementById("log-msg").innerText = "❌【邏輯謬誤】扣除 20 點生命值。請再踩一次拉桿挑戰！";
+        document.getElementById("log-msg").innerText = "❌【邏輯謬誤】機關反噬！扣除 20 點生命值。請再踩一次挑戰！";
         if(pHP <= 0) {
             document.getElementById("log-msg").innerText = "💀 挑戰失敗。請重新整理網頁。";
             gameState = "GAMEOVER";
@@ -250,22 +277,14 @@ function checkAnswer(selectedIndex) {
 }
 
 function setupBossBattle() {
-    const bData = RIDDLES[currentLevel].boss;
-    eHP = bData.hp;
-    document.getElementById("battle-title").innerText = bData.name;
+    document.getElementById("battle-title").innerText = BOSS_DATA.name;
     updateBattleUI();
     document.getElementById("battle-window").style.display = "block";
 }
 
 function nextLevel() {
-    if(currentLevel === 9) {
-        document.getElementById("log-msg").innerText = "🎉【神話通關】你成功突破了聖殿九重考驗！你是真正的邏輯大師！";
-        gameState = "WIN";
-        return;
-    }
     currentLevel++;
-    levelCleared = false;
-    GAME_MAP = generatePerfectMaze(); // 重新用演算法隨機生成下一關迷宮
+    GAME_MAP = generatePerfectMaze(); 
     document.getElementById("game-title").innerText = `⚔️ 邏輯聖殿：九重試煉（第 ${currentLevel} 關） ⚔️`;
     document.getElementById("log-msg").innerText = `🎉 晉級成功！進入第 ${currentLevel} 關迷宮。`;
     updateUIStatus();
@@ -278,30 +297,30 @@ function updateUIStatus() {
 }
 
 function updateBattleUI() {
-    const bData = RIDDLES[currentLevel].boss;
-    document.getElementById("battle-hp").innerText = `${bData.name} HP: ${eHP} | 你的 HP: ${pHP}`;
+    document.getElementById("battle-hp").innerText = `${BOSS_DATA.name} HP: ${eHP} | 你的 HP: ${pHP}`;
 }
 
 function playerAttack() {
-    let dmg = pAtk + Math.floor(Math.random()*12) - 4;
+    let dmg = pAtk + Math.floor(Math.random()*20) - 5;
     eHP -= dmg;
     
     if(eHP <= 0) {
         document.getElementById("battle-window").style.display = "none";
-        document.getElementById("log-msg").innerText = `⚔️ 成功擊殺當前守門魔王！`;
-        nextLevel();
+        document.getElementById("log-msg").innerText = `🎉【神話通關】你成功斬殺了終焉大魔王！全劇終，你是真正的邏輯大師！`;
+        gameState = "WIN";
+        GAME_MAP[pY][pX] = 0;
     } else {
-        const bData = RIDDLES[currentLevel].boss;
-        let eAtk = bData.atk + Math.floor(Math.random()*6) - 3; 
+        let eAtk = BOSS_DATA.atk + Math.floor(Math.random()*10) - 4; 
         pHP -= eAtk;
         if(pHP <= 0) {
             document.getElementById("battle-window").style.display = "none";
-            document.getElementById("log-msg").innerText = "💀 挑戰失敗。請重新整理網頁。";
+            document.getElementById("log-msg").innerText = "💀 你不敵大魔王，挑戰失敗。請重新整理網頁。";
             gameState = "GAMEOVER";
         }
     }
     updateUIStatus();
     if(gameState === "BATTLE") updateBattleUI();
+    drawGame();
 }
 
 updateUIStatus();
