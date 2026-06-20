@@ -2,14 +2,14 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>勇者鬥惡龍：時之迷宮（豪華進階版）</title>
+    <title>勇者鬥惡龍：時之迷宮（三重大關卡版）</title>
     <style>
         body { background-color: #222; color: #fff; font-family: "Microsoft JhengHei", sans-serif; text-align: center; margin: 0; padding: 20px; }
         #game-container { position: relative; width: 640px; margin: 20px auto; }
         canvas { background-color: #000; border: 4px solid #fff; display: block; }
         #dialog-box { background: #111; border: 2px solid #fff; padding: 15px; margin-top: 10px; min-height: 60px; text-align: left; font-size: 18px; }
         .stats { color: #0f0; margin-top: 5px; font-weight: bold; }
-        #puz-window, #battle-window { position: absolute; top: 30px; left: 100px; width: 440px; background: rgba(0,0,128,0.95); border: 3px solid #ffd700; padding: 20px; box-sizing: border-box; display: none; z-index: 10; }
+        #puz-window, #battle-window { position: absolute; top: 40px; left: 100px; width: 440px; background: rgba(0,0,128,0.95); border: 3px solid #ffd700; padding: 20px; box-sizing: border-box; display: none; z-index: 10; }
         #battle-window { background: rgba(50,0,0,0.95); border-color: #f00; }
         button { background: #fff; border: none; padding: 8px 15px; margin: 5px; font-size: 16px; cursor: pointer; font-weight: bold; }
         button:hover { background: #ffd700; }
@@ -17,19 +17,19 @@
 </head>
 <body>
 
-    <h1>⚔️ 勇者鬥惡龍：時之迷宮（豪華版） ⚔️</h1>
-    <p>💡 操作說明：使用鍵盤方向鍵 【↑ ↓ ← ➔】 移動。你必須探索迷宮，解開三根拉桿的謎題增強實力，最後擊敗深處的魔王！</p>
+    <h1 id="game-title">⚔️ 勇者鬥惡龍：時之迷宮（第 1 關） ⚔️</h1>
+    <p>💡 操作說明：使用鍵盤方向鍵 【↑ ↓ ← ➔】 移動。解開每關的金色拉桿謎題才能開啟前往下一關的傳送門！</p>
 
     <div id="game-container">
         <canvas id="gameCanvas" width="640" height="416"></canvas>
         
         <div id="dialog-box">
-            <div id="log-msg">【系統】迷宮內藏有三根拉桿（金色），各自封印著強大的力量。</div>
+            <div id="log-msg">【第 1 關】尋找迷宮中的拉桿破解封印吧！</div>
             <div class="stats" id="status-bar">勇者 HP: 100/100 | 攻擊力: 15 | 裝備: 生鏽鐵劍</div>
         </div>
 
         <div id="puz-window">
-            <h3 id="puz-title" style="color:#ffd700; margin-top:0;">🧩 謎題</h3>
+            <h3 id="puz-title" style="color:#ffd700; margin-top:0;">🧩 封印謎題</h3>
             <p id="puz-text">題目載入中...</p>
             <div id="puz-buttons"></div>
         </div>
@@ -46,58 +46,99 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const GRID_SIZE = 32;
 
-// 擴大並加深難度的迷宮地圖 (1:牆壁, 0:空地, 2:一號拉桿, 3:魔王, 4:二號拉桿, 5:三號拉桿)
-const GAME_MAP = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,2,1],
-    [1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1],
-    [1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
-    [1,0,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1,0,1],
-    [1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1,5,0,1],
-    [1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
-    [1,4,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,1],
-    [1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,0,1],
-    [1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,1,0,1],
-    [1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,0,1,0,1],
-    [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,3,1],
-];
-
+// 遊戲狀態與數值
+let currentLevel = 1;
 let pX = 1, pY = 1;
 let pHP = 100, pMaxHP = 100, pAtk = 15;
-let eHP = 150; // 魔王血量加厚
+let eHP = 150; 
 let gameState = "MAP"; 
-let currentLeverType = 0;
+let levelCleared = false; // 是否解開該關拉桿
 
-// 謎題庫資料
-const riddles = {
+// 三個關卡的完全不同迷宮地圖 (1:牆壁, 0:空地, 2:拉桿, 3:魔王/終點)
+const LEVELS = {
+    1: {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,2,1],
+            [1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1],
+            [1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,1],
+            [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
+            [1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,0,1,0,1],
+            [1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,0,1],
+            [1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,1,0,0,0,1],
+            [1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,0,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,3,1], // 3 在第一關代表下一關傳送門
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        startX: 1, startY: 1,
+        riddle: {
+            title: "🧩 第 1 關：歷史時空拉桿",
+            text: "『1號說2號說謊；2號說3號是真的；3號說1號說謊。』只有一根拉桿說真話，誰才是誠實的？",
+            options: ["1 號", "2 號", "3 號"],
+            correct: 0,
+            success: "【解謎成功】封印解除！獲得「王者之劍」(攻擊力+20)，右下角傳送門已開啟！",
+            effect: () => { pAtk += 20; }
+        }
+    },
     2: {
-        title: "🧩 歷史拉桿的謎題",
-        text: "『1號說2號說謊；2號說3號是真的；3號說1號說謊。』只有一根拉桿說真話，誰才是誠實的？",
-        options: ["1 號", "2 號", "3 號"],
-        correct: 0,
-        success: "【解謎成功】獲得「王者之劍」，攻擊力 +25！",
-        effect: () => { pAtk += 25; }
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1],
+            [1,1,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1,0,1],
+            [1,0,0,0,1,0,1,0,1,0,1,0,1,0,1,2,0,1,0,1],
+            [1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,1,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,1,1,0,0,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,1,1,0,1,0,1,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,0,1,0,0,1,0,0,0,1],
+            [1,0,1,0,0,0,0,0,0,0,1,0,1,0,1,1,1,1,1,1],
+            [1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,0,0,0,0,1],
+            [1,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,1,0,1],
+            [1,0,0,0,1,0,1,0,0,0,1,1,1,1,1,0,1,3,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        startX: 1, startY: 1,
+        riddle: {
+            title: "🧩 第 2 關：數學邏輯拉桿",
+            text: "一隻蝸牛想爬上 10 公尺高的牆，白天爬 3 公尺，晚上滑下 2 公尺，請問牠第幾天能爬到頂端？",
+            options: ["7 天", "8 天", "10 天"],
+            correct: 1,
+            success: "【解謎成功】封印解除！最大生命值增加 50 並補滿血，前往下一關的魔方已充能！",
+            effect: () => { pMaxHP += 50; pHP = pMaxHP; }
+        }
     },
-    4: {
-        title: "🧩 數學封印的拉桿",
-        text: "一隻蝸牛想爬上 10 公尺高的牆，白天爬 3 公尺，晚上滑下 2 公尺，請問牠第幾天能爬到頂端？",
-        options: ["7 天", "8 天", "10 天"],
-        correct: 1, // 第8天白天就到了
-        success: "【解謎成功】獲得「聖盾守護」，最大生命值增加 50 並補滿血！",
-        effect: () => { pMaxHP += 50; pHP = pMaxHP; }
-    },
-    5: {
-        title: "🧩 邏輯時空拉桿",
-        text: "有兩枚硬幣，加起來共 30 元，其中一枚不是 10 元硬幣。請問這兩枚硬幣面額分別是多少？",
-        options: ["20元和10元", "15元和15元", "不可能有這種組合"],
-        correct: 0, // 其中一枚不是10元（20元那枚不是），但另一枚是10元
-        success: "【解謎成功】獲得「狂暴藥水」，攻擊力直接翻倍！",
-        effect: () => { pAtk *= 2; }
+    3: {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,2,1],
+            [1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,1],
+            [1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,1,0,0,1],
+            [1,1,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,1],
+            [1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1],
+            [1,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1],
+            [1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,0,1,0,1],
+            [1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,3,1], // 3 在第三關代表最終大魔王
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        startX: 1, startY: 1,
+        riddle: {
+            title: "🧩 第 3 關：終極悖論拉桿",
+            text: "有兩枚硬幣，加起來共 30 元，其中一枚不是 10 元硬幣。請問這兩枚硬幣面額分別是多少？",
+            options: ["20元和10元", "15元和15元", "不可能有這種組合"],
+            correct: 0,
+            success: "【解謎成功】神力覺醒！獲得「狂暴藥水」，攻擊力直接翻倍！快去擊敗右下角的魔王！",
+            effect: () => { pAtk *= 2; }
+        }
     }
 };
 
-// 圖片設定
+let GAME_MAP = LEVELS[currentLevel].map;
+
+// 圖片管理物件
 const imgs = { player: new Image(), wall: new Image(), lever: new Image(), monster: new Image() };
 let imgLoaded = { player: false, wall: false, lever: false, monster: false };
 
@@ -124,8 +165,15 @@ function drawGame() {
             let posY = r * GRID_SIZE;
             
             if(tile === 1) drawTile(posX, posY, '#555', imgs.wall, imgLoaded.wall);
-            else if([2, 4, 5].includes(tile)) drawTile(posX, posY, '#ffd700', imgs.lever, imgLoaded.lever); // 三種拉桿都用金色拉桿圖
-            else if(tile === 3) drawTile(posX, posY, '#f00', imgs.monster, imgLoaded.monster);
+            else if(tile === 2) drawTile(posX, posY, '#ffd700', imgs.lever, imgLoaded.lever);
+            else if(tile === 3) {
+                // 如果是第三關顯示魔王圖，前兩關顯示紅色傳送門
+                if(currentLevel === 3) drawTile(posX, posY, '#f00', imgs.monster, imgLoaded.monster);
+                else {
+                    ctx.fillStyle = levelCleared ? "#00ffcc" : "#ff3333"; // 充能後變青色
+                    ctx.fillRect(posX, posY, GRID_SIZE-1, GRID_SIZE-1);
+                }
+            }
         }
     }
     drawTile(pX * GRID_SIZE, pY * GRID_SIZE, '#007bff', imgs.player, imgLoaded.player);
@@ -144,27 +192,33 @@ window.addEventListener("keydown", function(e) {
         pX = nextX; pY = nextY;
         let currentTile = GAME_MAP[pY][pX];
         
-        if([2, 4, 5].includes(currentTile)) {
+        if(currentTile === 2) {
             gameState = "PUZ";
-            currentLeverType = currentTile;
-            openPuzzle(currentTile);
+            openPuzzle();
         } else if(currentTile === 3) {
-            gameState = "BATTLE";
-            updateBattleUI();
-            document.getElementById("battle-window").style.display = "block";
+            if(currentLevel < 3) {
+                if(levelCleared) {
+                    nextLevel();
+                } else {
+                    document.getElementById("log-msg").innerText = "🔒 傳送門尚未開啟！你必須先找到並解開本關拉桿謎題！";
+                }
+            } else {
+                gameState = "BATTLE";
+                updateBattleUI();
+                document.getElementById("battle-window").style.display = "block";
+            }
         }
     }
     drawGame();
 });
 
-// 開啟謎題
-function openPuzzle(type) {
-    const data = riddles[type];
+function openPuzzle() {
+    const data = LEVELS[currentLevel].riddle;
     document.getElementById("puz-title").innerText = data.title;
     document.getElementById("puz-text").innerText = data.text;
     
     const btnContainer = document.getElementById("puz-buttons");
-    btnContainer.innerHTML = ""; // 清空舊按鈕
+    btnContainer.innerHTML = ""; 
     
     data.options.forEach((opt, index) => {
         const btn = document.createElement("button");
@@ -175,26 +229,37 @@ function openPuzzle(type) {
     document.getElementById("puz-window").style.display = "block";
 }
 
-// 檢查謎題答案
 function checkAnswer(selectedIndex) {
     document.getElementById("puz-window").style.display = "none";
-    const data = riddles[currentLeverType];
+    const data = LEVELS[currentLevel].riddle;
     
     if(selectedIndex === data.correct) {
-        data.effect(); // 觸發能力加成
+        data.effect(); 
+        levelCleared = true;
         document.getElementById("log-msg").innerText = data.success;
-        GAME_MAP[pY][pX] = 0; // 拔掉這根拉桿
+        GAME_MAP[pY][pX] = 0; 
     } else {
-        pHP -= 20; // 答錯扣血
-        document.getElementById("log-msg").innerText = "❌【解謎失敗】機關引爆！你受到了 20 點陷阱傷害，拉桿暫時封印。";
+        pHP -= 20; 
+        document.getElementById("log-msg").innerText = "❌【解謎失敗】受到 20 點陷阱傷害！拉桿重新封印，請再次走上來挑戰。";
         if(pHP <= 0) {
-            document.getElementById("log-msg").innerText = "💀 你在解謎時被陷阱炸死了... 遊戲結束。";
+            document.getElementById("log-msg").innerText = "💀 你在解謎時被陷阱炸死了... 遊戲結束。請重新整理網頁。";
             gameState = "GAMEOVER";
         }
     }
     updateUIStatus();
     gameState = "MAP";
     drawGame();
+}
+
+function nextLevel() {
+    currentLevel++;
+    levelCleared = false;
+    GAME_MAP = LEVELS[currentLevel].map;
+    pX = LEVELS[currentLevel].startX;
+    pY = LEVELS[currentLevel].startY;
+    document.getElementById("game-title").innerText = `⚔️ 勇者鬥惡龍：時之迷宮（第 ${currentLevel} 關） ⚔️`;
+    document.getElementById("log-msg").innerText = `🎉 成功進入第 ${currentLevel} 關！這裡的迷宮更複雜了，快尋找新的拉桿！`;
+    updateUIStatus();
 }
 
 function updateUIStatus() {
@@ -206,7 +271,6 @@ function updateBattleUI() {
     document.getElementById("battle-hp").innerText = `魔王 HP: ${eHP} | 你的 HP: ${pHP}`;
 }
 
-// 戰鬥邏輯
 function playerAttack() {
     let dmg = pAtk + Math.floor(Math.random()*10) - 5;
     eHP -= dmg;
@@ -214,16 +278,16 @@ function playerAttack() {
     
     if(eHP <= 0) {
         document.getElementById("battle-window").style.display = "none";
-        document.getElementById("log-msg").innerText = "🎉 恭喜你成功破解所有謎題並斬殺魔王！你拯救了這個世界，完美通關！";
+        document.getElementById("log-msg").innerText = "🎉 恭喜你成功突破三大關卡、斬殺最終大魔王！世界恢復了和平，你拿到了滿分通關！";
         GAME_MAP[pY][pX] = 0;
         gameState = "WIN";
     } else {
-        let eAtk = 20 + Math.floor(Math.random()*6) - 3; // 魔王攻擊力
+        let eAtk = 22 + Math.floor(Math.random()*6) - 3; 
         pHP -= eAtk;
         msg += ` 魔王發怒反擊，對你造成 ${eAtk} 點重傷！`;
         if(pHP <= 0) {
             document.getElementById("battle-window").style.display = "none";
-            document.getElementById("log-msg").innerText = "💀 你終究敵不過魔王... 慘遭擊敗。請重新整理網頁再挑戰一次！";
+            document.getElementById("log-msg").innerText = "💀 你在最終關卡功虧一簣... 被魔王擊敗。重新整理網頁再試一次！";
             gameState = "GAMEOVER";
         }
     }
